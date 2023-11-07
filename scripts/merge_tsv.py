@@ -17,33 +17,34 @@ def read_zf_tsv(filename, skiprows):
 
 """ CDFS """
 # Get dataframes
-cdfs = read_zf_tsv('ZFOURGE/CDFS.tsv', skiprows=375)
-cdfs_sfr = read_zf_tsv('ZFOURGE/CDFS_SFR.tsv', skiprows=76)
-cdfs_z = read_zf_tsv('ZFOURGE/CDFS_Z.tsv', skiprows=80)
-dataframes = [cdfs, cdfs_sfr, cdfs_z]
+cdfs = read_zf_tsv('DATA/ZFOURGE/CDFS/CDFS.tsv', skiprows=375)
+cdfs_sfr = read_zf_tsv('DATA/ZFOURGE/CDFS/CDFS_SFR.tsv', skiprows=76)
+cdfs_z = read_zf_tsv('DATA/ZFOURGE/CDFS/CDFS_Z.tsv', skiprows=80)
+cdfs_flux = read_zf_tsv('DATA/ZFOURGE/CDFS/CDFS_FLUX.tsv', skiprows=117)
+dataframes = [cdfs, cdfs_sfr, cdfs_z, cdfs_flux]
 
 # Export to CSV
 df = pd.concat(dataframes, axis=1)
-df.to_csv('ZFOURGE/CDFS_MAIN.csv', sep=',')
+df.to_csv('DATA/ZFOURGE/CDFS/CDFS_MAIN.csv', sep=',')
 
-""" COSMOS """
-# Get dataframes
-cosmos = read_zf_tsv('ZFOURGE/COSMOS.tsv', skiprows=354)
-cosmos_sfr = read_zf_tsv('ZFOURGE/COSMOS_SFR.tsv', skiprows=76)
-cosmos_z = read_zf_tsv('ZFOURGE/COSMOS_Z.tsv', skiprows=80)
-dataframes = [cosmos, cosmos_sfr, cosmos_z]
+# """ COSMOS """
+# # Get dataframes
+# cosmos = read_zf_tsv('ZFOURGE/COSMOS.tsv', skiprows=354)
+# cosmos_sfr = read_zf_tsv('ZFOURGE/COSMOS_SFR.tsv', skiprows=76)
+# cosmos_z = read_zf_tsv('ZFOURGE/COSMOS_Z.tsv', skiprows=80)
+# dataframes = [cosmos, cosmos_sfr, cosmos_z]
 
-# Export to CSV
-df = pd.concat(dataframes, axis=1)
-df.to_csv('ZFOURGE/COSMOS_MAIN.csv', sep=',')
+# # Export to CSV
+# df = pd.concat(dataframes, axis=1)
+# df.to_csv('ZFOURGE/COSMOS_MAIN.csv', sep=',')
 
-""" UDS """
-# Get dataframes
-uds = read_zf_tsv('ZFOURGE/UDS.tsv', skiprows=286)
-uds_sfr = read_zf_tsv('ZFOURGE/UDS_SFR.tsv', skiprows=76)
-uds_z = read_zf_tsv('ZFOURGE/UDS_Z.tsv', skiprows=80)
-dataframes = [uds, uds_sfr, uds_z]
+# """ UDS """
+# # Get dataframes
+# uds = read_zf_tsv('ZFOURGE/UDS.tsv', skiprows=286)
+# uds_sfr = read_zf_tsv('ZFOURGE/UDS_SFR.tsv', skiprows=76)
+# uds_z = read_zf_tsv('ZFOURGE/UDS_Z.tsv', skiprows=80)
+# dataframes = [uds, uds_sfr, uds_z]
 
-# Export to CSV
-df = pd.concat(dataframes, axis=1)
-df.to_csv('ZFOURGE/UDS_MAIN.csv', sep=',')
+# # Export to CSV
+# df = pd.concat(dataframes, axis=1)
+# df.to_csv('ZFOURGE/UDS_MAIN.csv', sep=',')
