@@ -326,12 +326,12 @@ if __name__ == '__main__':
     data = pd.read_csv('./DATA/ZFOURGE/CDFS/CDFS_MAIN.csv')
     df = pd.DataFrame(data) # 30,911 galaxies
     df = df[df['Use'] == 1] # 13,299 galaxies
-    df = df[df['FKs'] > 0] # 12,676 galaxies # drop rows if FKs is negative
-    df = df[df['FKs'] <= 27] # 11,902 galaxies # drop rows if FKs is negative
+    df = df[df['F4.5'] > 0] # 12,676 galaxies # drop rows if FKs is negative
+    df = df[df['F4.5'] <= 27] # 11,902 galaxies # drop rows if FKs is negative
     
     cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
     dists = cosmo.luminosity_distance(df['zpk'])  * 10 ** 6 # comoving distance
-    mag_ab = 25 - 2.5 * np.log10(df['FKs']) # AB magnitude
+    mag_ab = 25 - 2.5 * np.log10(df['F4.5']) # AB magnitude
 
     # lum = fluxtolum(df['zpk'], df['FKs'])
     # # lum /= 3.826e33 # convert to solar luminosities
