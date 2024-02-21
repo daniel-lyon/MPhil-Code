@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 from astropy.cosmology import FlatLambdaCDM
 
 class LF(object):
-    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area):
+    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area, min_count=0, nrows=3, ncols=2):
         """ 
         Class to calculate the luminosity/magnitude function of a galaxy sample.
         
@@ -32,6 +32,15 @@ class LF(object):
         
         survey_area : float
             Survey area in square degrees.
+            
+        min_count : int, optional
+            Minimum number of galaxies in a luminosity bin to be plotted. Default is 0.
+        
+        nrows : int, optional
+            Number of rows in the plot. Default is 3.
+        
+        ncols : int, optional
+            Number of columns in the plot. Default is 2.
         """
         self._cosmo = cosmo
         self._z = z
@@ -39,6 +48,10 @@ class LF(object):
         self._lum_bins = lum_bins
         self._mlim = mlim
         self._survey_area = survey_area
+        
+        self._min_count = min_count
+        self._nrows = nrows
+        self._ncols = ncols
           
         df = pd.DataFrame({
             'z': self._z,
@@ -55,7 +68,7 @@ class LF(object):
         # Bin the data by redshift
         for min_z, max_z in self._z_bins:
             z_mask = (self._z >= min_z) & (self._z < max_z)
-            binned_z_data = self._df[z_mask]            
+            binned_z_data = self._df[z_mask]       
                 
             # Bin the data by luminosity
             counts, lum_bin_edges = np.histogram(binned_z_data['lum'], bins=self._lum_bins)
@@ -65,16 +78,16 @@ class LF(object):
             volumes = self._calc_volume(lum_bin_centers, min_z, max_z)
             
             # Save the counts, volumes, and luminosity bin centers
-            all_bins.append([counts, volumes, lum_bin_centers])
+            all_bins.append([counts, volumes, lum_bin_centers, binned_z_data['lum']])
         return all_bins
     
-    def _calc_volume(self, lum_bin_centers, min_z, max_z):
+    def _calc_volume(self, lum_bin_centers, zbin_min, zbin_max):
         """ 
         Calculate the volume of each luminosity bin.
         """
         # Calculate the minimum and maximum distance of the redshift bin
-        dmin = self._cosmo.comoving_distance(min_z).value # Mpc
-        dmax = self._cosmo.comoving_distance(max_z).value # Mpc
+        dmin = self._cosmo.comoving_distance(zbin_min).value # Mpc
+        dmax = self._cosmo.comoving_distance(zbin_max).value # Mpc
 
         # Calculate the maximum distance of each luminosity bin
         dmaxs = (10 * 10 ** ((self._mlim - lum_bin_centers) / 5)) # pc
@@ -87,30 +100,25 @@ class LF(object):
         vmin = 4/3 * np.pi * dmin**3 # Mpc^3
 
         # Calculate the maximum volume of each luminosity bin
-        vmaxs = 4/3 * np.pi * dmaxs**3 #
+        vmaxs = 4/3 * np.pi * dmaxs**3 # Mpc^3
 
         # Total volume probed accounting for survey area
         vol = (vmaxs - vmin) * (self._survey_area / 41253) # Mpc^3
         return vol
     
-    def plot(self, min_count=0):
+    def plot(self):
         """ 
         Make a simple plot of the luminosity function with no fitting.
-        
-        Parameters
-        ----------
-        min_count : int, optional
-            Minimum number of galaxies in a luminosity bin to be plotted. Default is 0.
         """
         data = self._bin_data()
         _, axes = plt.subplots(3, 2, figsize=(15, 10), sharex=True)
         
         # Plot the luminosity function for each redshift bin
         for ax, d, (z_start, z_end) in zip(axes.flatten(), data, self._z_bins):
-            counts, volumes, lum_bin_centers = d
+            counts, volumes, lum_bin_centers, _ = d
             
             # Mask the data if the number of galaxies in a luminosity bin is less than min_count
-            mask = counts > min_count
+            mask = counts > self._min_count
             lf = counts[mask] / volumes[mask]
             lum_bin_centers = lum_bin_centers[mask]
             
@@ -137,9 +145,11 @@ class LF(object):
         """
         if p0 is None and func == 'Schechter':
             p0 = [lum_bin_centers[0], 0.001, -0.9]
+            # bounds = ([lum_bin_centers[0]*2, 0, -10], [lum_bin_centers[-1]/2, 1, 10])
             f = self._schechter_magnitude
         elif p0 is None and func == 'Saunders':
             p0 = [lum_bin_centers[0], 0.001, -0.9, 0.1]
+            # bounds = ([lum_bin_centers[0]*2, 0, -10, 0], [lum_bin_centers[-1]/2, 3, 10, 10])
             f = self._saunders_magnitude
         
         # Fit the function to the data
@@ -156,7 +166,7 @@ class LF(object):
             return False
         return params
         
-    def fit(self, func, min_count=0, maxfev=1000, p0=None, nrows=3, ncols=2, verbose=True):
+    def fit(self, func, maxfev=1000, p0=None, verbose=True):
         """ 
         Fit a given function to the luminosity function.
         
@@ -165,26 +175,17 @@ class LF(object):
         func : str
             The function to fit. Options are 'Schechter' or 'Saunders'.
         
-        min_count : int, optional
-            Minimum number of galaxies in a luminosity bin to be plotted. Default is 0.
-        
         maxfev : int, optional
             Maximum number of calls to function. Default is 1000.
         
         p0 : array-like, optional
             Initial guess for the parameters. Default 'None' will auto set.
-        
-        nrows : int, optional
-            Number of rows in the plot. Default is 3.
-        
-        ncols : int, optional
-            Number of columns in the plot. Default is 2.
             
         verbose : bool, optional
             Print the fit parameters. Default is True.
         """
         data = self._bin_data()
-        fig, axes = plt.subplots(nrows, ncols, figsize=(15, 10), sharex=True, sharey=True)
+        fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True, sharey=True)
 
         # If there is more than one plot, flatten the axes
         try:
@@ -200,12 +201,16 @@ class LF(object):
         
         # For each redshift bin, fit the function to the data
         for ax, d, (z_start, z_end) in zip(axes, data, self._z_bins):
-            counts, volumes, lum_bin_centers = d
+            counts, volumes, lum_bin_centers, _ = d
             
             # Mask the data if the number of galaxies in a luminosity bin is less than min_count
-            mask = counts > min_count
+            mask = counts > self._min_count
             lf = counts[mask] / volumes[mask]
             lum_bin_centers = lum_bin_centers[mask]
+            
+            # Skip the redshift bin if all the data is masked
+            if len(lum_bin_centers) == 0:
+                continue
             
             # Calculate the error in the luminosity function
             upp_lf, low_lf = self._phi_error(counts[mask], volumes[mask])
@@ -232,15 +237,17 @@ class LF(object):
                 fmt='o', label=f'{z_start} $\leq$ z < {z_end}', capsize=4)
             ax.plot(lum_bin_centers, np.log10(f(lum_bin_centers, *params)), label=f'{func} fit', color='red', linestyle='--')
             long_lum_smooth = np.linspace(lum_bin_centers[0], lum_bin_centers[-1], 100)
-            ax.fill_between(long_lum_smooth, 
-                np.log10(f(long_lum_smooth, *lower_params)), 
-                np.log10(f(long_lum_smooth, *upper_params)), 
-                alpha=0.2, color='red', label='Fit Error')
+            if type(lower_params) != bool and type(upper_params) != bool:
+                ax.fill_between(long_lum_smooth, 
+                    np.log10(f(long_lum_smooth, *lower_params)), 
+                    np.log10(f(long_lum_smooth, *upper_params)), 
+                    alpha=0.2, color='red', label='Fit Error')
             # ax.fill_between(lum_bin_centers, np.log10(low_lf), np.log10(upp_lf), alpha=0.2, color='magenta', label='Error')
-            ax.set_ylim(-5.25, -2.25)
+            # ax.set_ylim(-5.25, -2)
+            # ax.set_ylim(-10, -2)
             ax.legend(loc='lower right')
 
-        fig.suptitle('ZFOURGE Daniel Code')
+        # fig.suptitle('ZFOURGE Daniel Code')
         fig.supylabel('log($\phi$ $Mpc^-3$)')
         fig.supxlabel('$M_{AB}$')
         plt.subplots_adjust(hspace=0, wspace=0)
@@ -265,28 +272,34 @@ class LF(object):
         data = self._bin_data()
         print('Number of galaxies in each luminosity bin:')
         for d, (z_start, z_end) in zip(data, self._z_bins):
-            counts, _, _ = d
+            counts, _, _, _ = d
             print(f'{z_start} <= z < {z_end}: {counts.tolist()}. Total = {np.sum(counts)}')
         print('\n')
-        return counts
     
-    def overlay_plot(self, min_count=0):
+    def print_volumes(self):
+        """ 
+        Print the volume of each luminosity bin.
+        """
+        data = self._bin_data()
+        print('Volume of each luminosity bin:')
+        for d, (z_start, z_end) in zip(data, self._z_bins):
+            _, volumes, _, _ = d
+            volumes = [f'{v:.2e}' for v in volumes]
+            print(f'{z_start} <= z < {z_end}: {volumes}')
+        print('\n')
+    
+    def overlay_plot(self):
         """ 
         Make a simple plot of the luminosity function with no fitting.
-        
-        Parameters
-        ----------
-        min_count : int, optional
-            Minimum number of galaxies in a luminosity bin to be plotted. Default is 0.
         """
         data = self._bin_data()
         
         # Plot the luminosity function for each redshift bin
         for d, (z_start, z_end) in zip(data, self._z_bins):
-            counts, volumes, lum_bin_centers = d
+            counts, volumes, lum_bin_centers, _ = d
             
             # Mask the data if the number of galaxies in a luminosity bin is less than min_count
-            mask = counts > min_count
+            mask = counts > self._min_count
             lf = counts[mask] / volumes[mask]
             lum_bin_centers = lum_bin_centers[mask]
             
@@ -298,6 +311,52 @@ class LF(object):
         plt.xlabel('$M_{AB}$')
         plt.ylabel('log(phi)')
         plt.show()
+        
+    def plot_histograms(self):
+        data = self._bin_data()
+        
+        fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
+        
+        for ax, d, (z_start, z_end) in zip(axes.flatten(), data, self._z_bins):
+            _, _, _, lum = d
+            ax.hist(lum, bins=self._lum_bins, histtype='step', label=f'{z_start} $\leq$ z < {z_end}')
+            ax.axhline(y=self._min_count, color='red', linestyle='--', label='Mask Threshold')
+            # ax.fill_between(self._lum_bins, 0, self._min_count, alpha=0.2, color='red')
+            ax.legend()
+        
+        fig.supylabel('Number of Galaxies')
+        fig.supxlabel('$M_{AB}$')
+        plt.subplots_adjust(hspace=0)
+        plt.show()
+        
+    def plot_volumes(self):
+        data = self._bin_data()
+        
+        fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
+        
+        for ax, d, (z_start, z_end) in zip(axes.flatten(), data, self._z_bins):
+            counts, volumes, lum_bin_centers, _ = d
+            
+            # Mask the data if the number of galaxies in a luminosity bin is less than min_count
+            good_mask = counts > self._min_count
+            good_volumes = volumes[good_mask]
+            good_lum_bin_centers = lum_bin_centers[good_mask]
+            
+            # Get the volumes for each luminosity bin not properly masked
+            bad_mask = counts <= self._min_count
+            bad_volumes = volumes[bad_mask]
+            bad_lum_bin_centers = lum_bin_centers[bad_mask]
+            
+            ax.scatter(good_lum_bin_centers, good_volumes, label=f'{z_start} $\leq$ z < {z_end}')
+            ax.scatter(bad_lum_bin_centers, bad_volumes, color='red', label=f'Masked Bins')
+            ax.axhline(y=0, color='black', linestyle='--', label='Zero Volume')
+            # ax.set_yscale('symlog')
+            ax.legend()
+            
+        fig.supylabel('Volume $Mpc^3$')
+        fig.supxlabel('$M_{AB}$')
+        plt.subplots_adjust(hspace=0)
+        plt.show()
     
 if __name__ == '__main__':
     import pandas as pd
@@ -307,6 +366,7 @@ if __name__ == '__main__':
     df = pd.DataFrame(data)
     df = df[df['Use'] == 1]
     df = df[df['FKs'] >= 0]
+    df = df[df['FKs'] <= 27]
         
     cosmo = FlatLambdaCDM(H0=70, Om0=0.3) # cosmology
     redshift_bins = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)] # redshift bins
@@ -317,13 +377,16 @@ if __name__ == '__main__':
     dists = cosmo.luminosity_distance(z) # Mpc
     dists *= 10 ** 6 # Mpc -> pc
     m_ab = 25 - 2.5*np.log10(m_app) # apparent magnitude -> AB magnitude 
-    M_abs = m_ab - 5 * np.log10(dists / 10) # AB magnitude -> absolute magnitude 
+    M_abs = m_ab - 5 * np.log10(dists / 10) # AB magnitude -> absolute magnitude s
     
     mlim = 27 # apparent magnitude limit
     survey_area = 0.03556 # survey area in square degrees
     
-    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area)
-    lf.print_counts()
-    # lf.plot(min_count=10)
-    lf.fit(func='Schechter', min_count=10)
-    # lf.overlay_plot(min_count=10)
+    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area, min_count=10)
+    # lf.print_counts()
+    # lf.print_volumes()
+    # lf.plot()
+    # lf.overlay_plot()
+    # lf.plot_histograms()
+    # lf.plot_volumes()
+    lf.fit(func='Saunders', verbose=True, maxfev=10000)
