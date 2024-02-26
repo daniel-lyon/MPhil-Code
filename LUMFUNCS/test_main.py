@@ -10,19 +10,27 @@ df = df[df['Use'] == 1]
 df = df[df['LIR'] >= 0]
     
 cosmo = FlatLambdaCDM(H0=70, Om0=0.3) # cosmology
-redshift_bins = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)] # redshift bins
-lum_bins = np.arange(8, 14, 0.2) # luminosity bins
+redshift_bins = [(0, 1), (1, 2), (2, 3), (3, 4), (4,5), (5, 6)] # redshift bins
+# redshift_bins = [(0, 1), (1, 2), (2, 3), (3, 4), (4,5), (5, 6)] # redshift bins
+lum_bins = np.arange(6, 14, 0.25) # luminosity bins
 z = df['zpk'] # redshift
-lum = np.log10(df['LIR']) # apparent magnitude
+lum = np.log10(df['LIR']) # solar luminosities
 
-mlim = 27 # apparent magnitude limit
+max_z = 0.652 * (10 ** ((lum - 6.586) / 5.336) - 0.768)
+
+mask = (z <= max_z)
+z = z[mask]
+lum = lum[mask]
+
+mlim = []
 survey_area = 0.03556 # survey area in square degrees
 
-lf = LF(cosmo, z, lum, redshift_bins, lum_bins, mlim, survey_area, min_count=10)
-lf.print_counts()
-lf.print_volumes()
-# lf.plot()
+lf = LF(cosmo, z, lum, redshift_bins, lum_bins, mlim, survey_area, min_count=10, ylim=(-6,-2), nrows=3, ncols=2)
+# lf.print_counts()
+# lf.print_volumes()
 # lf.overlay_plot()
-lf.plot_histograms()
-lf.plot_volumes()
-lf.fit(func='Schechter', verbose=True, maxfev=10000)
+func = 'Saunders_lum'
+lf.plot_histograms(func)
+lf.plot_volumes(func)
+# lf.plot()
+lf.fit(func, verbose=True, maxfev=100000)

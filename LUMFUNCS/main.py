@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 from astropy.cosmology import FlatLambdaCDM
 
 class LF(object):
-    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area, min_count=0, nrows=3, ncols=2):
+    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area, min_count=0, nrows=3, ncols=2, ylim=(-10, -2)):
         """ 
         Class to calculate the luminosity/magnitude function of a galaxy sample.
         
@@ -52,6 +52,7 @@ class LF(object):
         self._min_count = min_count
         self._nrows = nrows
         self._ncols = ncols
+        self._ylim = ylim
           
         df = pd.DataFrame({
             'z': self._z,
@@ -90,8 +91,12 @@ class LF(object):
         dmax = self._cosmo.comoving_distance(zbin_max).value # Mpc
 
         # Calculate the maximum distance of each luminosity bin
-        dmaxs = (10 * 10 ** ((self._mlim - lum_bin_centers) / 5)) # pc
-        dmaxs = dmaxs / 10 ** 6 # pc -> Mpc
+        if type(self._mlim) == (int or float):
+            dmaxs = (10 * 10 ** ((self._mlim - lum_bin_centers) / 5)) # pc
+            dmaxs = dmaxs / 10 ** 6 # pc -> Mpc
+        elif type(self._mlim) == list:
+            max_z = 0.652 * (10 ** ((lum_bin_centers - 6.586) / 5.336) - 0.768)
+            dmaxs = self._cosmo.comoving_distance(max_z).value # Mpc
 
         # If the maximum distance is greater than the maximum redshift bin distance, set it to the maximum redshift bin distance
         dmaxs[dmaxs > dmax] = dmax
@@ -133,12 +138,20 @@ class LF(object):
     
     @staticmethod
     def _schechter_magnitude(M, M_star, phi_star, alpha):
-        return phi_star * 10 ** (-0.4*(alpha+1)*(M-M_star)) * np.exp(-10.**(-0.4*(M-M_star)))
+        return phi_star * 10 ** (-0.4*(1-alpha)*(M-M_star)) * np.exp(-10.**(-0.4*(M-M_star)))
+    
+    @staticmethod
+    def _schecter_luminosity(L, L_star, phi_star, alpha):
+        return phi_star * 10 ** (-0.4*(1-alpha)*(L_star-L)) * np.exp(-10.**(-0.4*(L_star-L))) 
     
     @staticmethod
     def _saunders_magnitude(M, M_star, phi_star, alpha, sigma):
-        return phi_star * 10 ** (-0.4*(1-alpha)*(M-M_star)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (0.4 * (M_star - M))))**2)
-        
+        return phi_star * 10 ** (-0.4*(1-alpha)*(M-M_star)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (M_star - M))))**2)
+    
+    @staticmethod
+    def _saunders_luminosity(L, L_star, phi_star, alpha, sigma):
+        return phi_star * 10 ** (-0.4*(1-alpha)*(L_star-L)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (L - L_star))))**2)
+       
     def _get_params(self, func, lum_bin_centers, lf, z_start, z_end, maxfev=1000, p0=None):
         """ 
         Get the parameters of the function fit.
@@ -147,10 +160,18 @@ class LF(object):
             p0 = [lum_bin_centers[0], 0.001, -0.9]
             # bounds = ([lum_bin_centers[0]*2, 0, -10], [lum_bin_centers[-1]/2, 1, 10])
             f = self._schechter_magnitude
+        elif p0 is None and func == 'Schechter_lum':
+            p0 = [lum_bin_centers[-1], 0.001, -0.9]
+            # bounds = ([lum_bin_centers[0]*2, 0, -10], [lum_bin_centers[-1]/2, 1, 10])
+            f = self._schecter_luminosity
         elif p0 is None and func == 'Saunders':
             p0 = [lum_bin_centers[0], 0.001, -0.9, 0.1]
             # bounds = ([lum_bin_centers[0]*2, 0, -10, 0], [lum_bin_centers[-1]/2, 3, 10, 10])
             f = self._saunders_magnitude
+        elif p0 is None and func == 'Saunders_lum':
+            p0 = [lum_bin_centers[-1], 0.001, -0.9, 0.1]
+            # bounds = ([lum_bin_centers[0]*2, 0, -10, 0], [lum_bin_centers[-1]/2, 3, 10, 10])
+            f = self._saunders_luminosity
         
         # Fit the function to the data
         try:
@@ -173,7 +194,7 @@ class LF(object):
         Parameters
         ----------
         func : str
-            The function to fit. Options are 'Schechter' or 'Saunders'.
+            The function to fit. Options are 'Schechter', 'Schechter_lum', 'Saunders', or 'Saunders_lum'.
         
         maxfev : int, optional
             Maximum number of calls to function. Default is 1000.
@@ -198,6 +219,12 @@ class LF(object):
             f = self._schechter_magnitude
         elif func == 'Saunders':
             f = self._saunders_magnitude
+        elif func == 'Schechter_lum':
+            f = self._schecter_luminosity
+        elif func == 'Saunders_lum':
+            f = self._saunders_luminosity
+            
+        print(f)
         
         # For each redshift bin, fit the function to the data
         for ax, d, (z_start, z_end) in zip(axes, data, self._z_bins):
@@ -219,9 +246,7 @@ class LF(object):
             params = self._get_params(func, lum_bin_centers, lf, z_start, z_end, maxfev, p0)
             if params is False:
                 continue
-            upper_params = self._get_params(func, lum_bin_centers, upp_lf, z_start, z_end, maxfev, p0)
-            lower_params = self._get_params(func, lum_bin_centers, low_lf, z_start, z_end, maxfev, p0)
-            
+                        
             # Print the fit parameters
             if verbose:
                 print(f'{z_start} <= z < {z_end} Function fit:')
@@ -231,25 +256,34 @@ class LF(object):
                 if len(params) == 4:
                     print(f'sigma = {params[3]:.2e}')
                 print('\n')
+                
+            upper_params = self._get_params(func, lum_bin_centers, upp_lf, z_start, z_end, maxfev, p0)
+            lower_params = self._get_params(func, lum_bin_centers, low_lf, z_start, z_end, maxfev, p0)
             
             # Plot the luminosity function and the fit
             ax.errorbar(lum_bin_centers, np.log10(lf), yerr=[np.log10(lf) - np.log10(low_lf), np.log10(upp_lf) - np.log10(lf)], 
                 fmt='o', label=f'{z_start} $\leq$ z < {z_end}', capsize=4)
+            
             ax.plot(lum_bin_centers, np.log10(f(lum_bin_centers, *params)), label=f'{func} fit', color='red', linestyle='--')
+            
             long_lum_smooth = np.linspace(lum_bin_centers[0], lum_bin_centers[-1], 100)
             if type(lower_params) != bool and type(upper_params) != bool:
                 ax.fill_between(long_lum_smooth, 
                     np.log10(f(long_lum_smooth, *lower_params)), 
                     np.log10(f(long_lum_smooth, *upper_params)), 
                     alpha=0.2, color='red', label='Fit Error')
+                
             # ax.fill_between(lum_bin_centers, np.log10(low_lf), np.log10(upp_lf), alpha=0.2, color='magenta', label='Error')
-            # ax.set_ylim(-5.25, -2)
-            # ax.set_ylim(-10, -2)
-            ax.legend(loc='lower right')
-
+            ax.set_ylim(self._ylim)
+            ax.legend()
+            # ax.legend(loc='lower left')
+        
         # fig.suptitle('ZFOURGE Daniel Code')
+        if '_lum' in func:
+            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
+        else:
+            fig.supxlabel('$M_{AB}$')
         fig.supylabel('log($\phi$ $Mpc^-3$)')
-        fig.supxlabel('$M_{AB}$')
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
     
@@ -312,7 +346,7 @@ class LF(object):
         plt.ylabel('log(phi)')
         plt.show()
         
-    def plot_histograms(self):
+    def plot_histograms(self, func=None):
         data = self._bin_data()
         
         fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
@@ -325,16 +359,26 @@ class LF(object):
             ax.legend()
         
         fig.supylabel('Number of Galaxies')
-        fig.supxlabel('$M_{AB}$')
+        
+        if '_lum' in func:
+            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
+        else:
+            fig.supxlabel('$M_{AB}$')
         plt.subplots_adjust(hspace=0)
         plt.show()
         
-    def plot_volumes(self):
+    def plot_volumes(self, func=None):
         data = self._bin_data()
         
         fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
         
-        for ax, d, (z_start, z_end) in zip(axes.flatten(), data, self._z_bins):
+        # If there is more than one plot, flatten the axes
+        try:
+            axes = axes.flatten()
+        except:
+            axes = [axes]
+        
+        for ax, d, (z_start, z_end) in zip(axes, data, self._z_bins):
             counts, volumes, lum_bin_centers, _ = d
             
             # Mask the data if the number of galaxies in a luminosity bin is less than min_count
@@ -354,7 +398,10 @@ class LF(object):
             ax.legend()
             
         fig.supylabel('Volume $Mpc^3$')
-        fig.supxlabel('$M_{AB}$')
+        if '_lum' in func:
+            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
+        else:
+            fig.supxlabel('$M_{AB}$')
         plt.subplots_adjust(hspace=0)
         plt.show()
     
@@ -382,11 +429,11 @@ if __name__ == '__main__':
     mlim = 27 # apparent magnitude limit
     survey_area = 0.03556 # survey area in square degrees
     
-    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area, min_count=10)
+    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area, min_count=10, ylim=(-6,-2))
     # lf.print_counts()
     # lf.print_volumes()
     # lf.plot()
     # lf.overlay_plot()
-    # lf.plot_histograms()
-    # lf.plot_volumes()
+    lf.plot_histograms(func='Saunders')
+    lf.plot_volumes(func='Saunders')
     lf.fit(func='Saunders', verbose=True, maxfev=10000)
