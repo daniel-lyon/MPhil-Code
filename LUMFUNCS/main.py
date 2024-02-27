@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 from astropy.cosmology import FlatLambdaCDM
 
 class LF(object):
-    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area, min_count=0, nrows=3, ncols=2, ylim=(-10, -2)):
+    def __init__(self, cosmo, z, M_abs, z_bins, lum_bins, mlim, survey_area, min_count=0, nrows=3, ncols=2, ylim=(-10, -2), xlabel='$M_{AB}$'):
         """ 
         Class to calculate the luminosity/magnitude function of a galaxy sample.
         
@@ -41,6 +41,12 @@ class LF(object):
         
         ncols : int, optional
             Number of columns in the plot. Default is 2.
+            
+        ylim : tuple, optional
+            Y-axis limits of the plot. Default is (-10, -2).
+        
+        xlabel : str, optional
+            X-axis label of the plot. Default is '$M_{AB}$'. Options are '$M_{AB}$' or 'log($L_{IR}$ [$L_{\odot}$])'.
         """
         self._cosmo = cosmo
         self._z = z
@@ -53,6 +59,7 @@ class LF(object):
         self._nrows = nrows
         self._ncols = ncols
         self._ylim = ylim
+        self._xlabel = xlabel
           
         df = pd.DataFrame({
             'z': self._z,
@@ -146,11 +153,11 @@ class LF(object):
     
     @staticmethod
     def _saunders_magnitude(M, M_star, phi_star, alpha, sigma):
-        return phi_star * 10 ** (-0.4*(1-alpha)*(M-M_star)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (M_star - M))))**2)
+        return phi_star * 10 ** (-0.4*(1-alpha)*(M-M_star)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (M - M_star))))**2)
     
     @staticmethod
     def _saunders_luminosity(L, L_star, phi_star, alpha, sigma):
-        return phi_star * 10 ** (-0.4*(1-alpha)*(L_star-L)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (L - L_star))))**2)
+        return phi_star * 10 ** (-0.4*(1-alpha)*(L_star-L)) * np.exp(-1 / (2 * sigma ** 2) * (np.log10(1 + 10 ** (-0.4 * (L_star - L))))**2)
        
     def _get_params(self, func, lum_bin_centers, lf, z_start, z_end, maxfev=1000, p0=None):
         """ 
@@ -158,19 +165,15 @@ class LF(object):
         """
         if p0 is None and func == 'Schechter':
             p0 = [lum_bin_centers[0], 0.001, -0.9]
-            # bounds = ([lum_bin_centers[0]*2, 0, -10], [lum_bin_centers[-1]/2, 1, 10])
             f = self._schechter_magnitude
         elif p0 is None and func == 'Schechter_lum':
             p0 = [lum_bin_centers[-1], 0.001, -0.9]
-            # bounds = ([lum_bin_centers[0]*2, 0, -10], [lum_bin_centers[-1]/2, 1, 10])
             f = self._schecter_luminosity
         elif p0 is None and func == 'Saunders':
             p0 = [lum_bin_centers[0], 0.001, -0.9, 0.1]
-            # bounds = ([lum_bin_centers[0]*2, 0, -10, 0], [lum_bin_centers[-1]/2, 3, 10, 10])
             f = self._saunders_magnitude
         elif p0 is None and func == 'Saunders_lum':
             p0 = [lum_bin_centers[-1], 0.001, -0.9, 0.1]
-            # bounds = ([lum_bin_centers[0]*2, 0, -10, 0], [lum_bin_centers[-1]/2, 3, 10, 10])
             f = self._saunders_luminosity
         
         # Fit the function to the data
@@ -223,8 +226,6 @@ class LF(object):
             f = self._schecter_luminosity
         elif func == 'Saunders_lum':
             f = self._saunders_luminosity
-            
-        print(f)
         
         # For each redshift bin, fit the function to the data
         for ax, d, (z_start, z_end) in zip(axes, data, self._z_bins):
@@ -279,11 +280,8 @@ class LF(object):
             # ax.legend(loc='lower left')
         
         # fig.suptitle('ZFOURGE Daniel Code')
-        if '_lum' in func:
-            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
-        else:
-            fig.supxlabel('$M_{AB}$')
         fig.supylabel('log($\phi$ $Mpc^-3$)')
+        fig.supxlabel(self._xlabel)
         plt.subplots_adjust(hspace=0, wspace=0)
         plt.show()
     
@@ -342,11 +340,11 @@ class LF(object):
         
         plt.legend()
         plt.tight_layout()
-        plt.xlabel('$M_{AB}$')
+        plt.xlabel(self._xlabel)
         plt.ylabel('log(phi)')
         plt.show()
         
-    def plot_histograms(self, func=None):
+    def plot_histograms(self):
         data = self._bin_data()
         
         fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
@@ -360,14 +358,11 @@ class LF(object):
         
         fig.supylabel('Number of Galaxies')
         
-        if '_lum' in func:
-            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
-        else:
-            fig.supxlabel('$M_{AB}$')
+        fig.supxlabel(self._xlabel)
         plt.subplots_adjust(hspace=0)
         plt.show()
         
-    def plot_volumes(self, func=None):
+    def plot_volumes(self):
         data = self._bin_data()
         
         fig, axes = plt.subplots(self._nrows, self._ncols, figsize=(15, 10), sharex=True)
@@ -398,10 +393,7 @@ class LF(object):
             ax.legend()
             
         fig.supylabel('Volume $Mpc^3$')
-        if '_lum' in func:
-            fig.supxlabel('log($L_{IR}$ [$L_{\odot}$])')
-        else:
-            fig.supxlabel('$M_{AB}$')
+        fig.supxlabel(self._xlabel)
         plt.subplots_adjust(hspace=0)
         plt.show()
     
@@ -414,6 +406,7 @@ if __name__ == '__main__':
     df = df[df['Use'] == 1]
     df = df[df['FKs'] >= 0]
     df = df[df['FKs'] <= 27]
+    df = df[df['SNR'] >= 6]
         
     cosmo = FlatLambdaCDM(H0=70, Om0=0.3) # cosmology
     redshift_bins = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6)] # redshift bins
@@ -429,11 +422,14 @@ if __name__ == '__main__':
     mlim = 27 # apparent magnitude limit
     survey_area = 0.03556 # survey area in square degrees
     
-    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area, min_count=10, ylim=(-6,-2))
+    # xlabel = '$M_{AB}$'
+    # xlabel = 'log($L_{IR}$ [$L_{\odot}$])'
+    
+    lf = LF(cosmo, z, M_abs, redshift_bins, lum_bins, mlim, survey_area, min_count=10, ylim=(-10.5,-2))
     # lf.print_counts()
     # lf.print_volumes()
     # lf.plot()
     # lf.overlay_plot()
-    lf.plot_histograms(func='Saunders')
-    lf.plot_volumes(func='Saunders')
-    lf.fit(func='Saunders', verbose=True, maxfev=10000)
+    # lf.plot_histograms()
+    # lf.plot_volumes()
+    lf.fit(func='Saunders', verbose=True, maxfev=100000)
